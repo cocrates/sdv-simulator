@@ -1,0 +1,36 @@
+# 기본 샘플 시나리오 — 문 제어 100ms 주행
+#
+# - t=5에 door_cmd 주입 (data 포함, tx 이벤트로 기록)
+# - assertion 5건: tx / rx / task 이벤트, at_ms + count(≥) 검증
+#
+# 실행: uv run sdv-sim run samples/basic/architecture.yaml samples/basic/scenario.yaml
+# 결과: pass (exit 0)
+
+schema_version: 1
+duration_ms: 100
+
+messages:
+  - { t_ms: 5, link: can1, frame: door_cmd, data: { state: open } }
+
+assertions:
+  # door_cmd tx: 주기 11건(t=0,10,...,100) + 주입 1건(t=5) = 12건, 첫 전송 t=0
+  - name: cmd_sent
+    expect: { event: tx, frame: door_cmd, link: can1, at_ms: 0, count: 12 }
+
+  # door_cmd rx: tx 완료(+1ms) 후 door_ecu가 수신 — 11건(t=1,6,...,96; t=101은 범위 밖)
+  - name: cmd_received
+    expect: { event: rx, frame: door_cmd, link: can1, node: door_ecu, at_ms: 1, count: 11 }
+
+  # door_state tx: 같은 tick에서 door_cmd에 밀려 1ms 지연 → CAN ID 중재 관찰
+  # 10건(t=1,11,...,91; t=100 시도는 종료 전 미전송)
+  - name: state_arbitrated
+    expect: { event: tx, frame: door_state, link: can1, at_ms: 1, count: 10 }
+
+  # door_state rx: body_ecu의 door_ctrl이 수신 — 10건(t=2,12,...,92)
+  - name: state_received
+    expect: { event: rx, frame: door_state, link: can1, node: body_ecu, at_ms: 2, count: 10 }
+
+  # task 이벤트: event: task 는 task_start + task_end 둘 다 매칭 (U-4)
+  # task_start 11건(t=0..100), task_end 10건(t=1..91) → 21건 ≥ 11
+  - name: task_runs
+    expect: { event: task, node: body_ecu, task: main, at_ms: 0, count: 11 }

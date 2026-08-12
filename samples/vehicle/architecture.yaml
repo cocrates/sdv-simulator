@@ -1,0 +1,122 @@
+# 실제 차량 네트워크 샘플 아키텍처 — 3도메인 (바디 CAN / 파워트레인 CAN / Ethernet 백본)
+#
+# - 바디 도메인 (body_can): 문·시트 제어 ECU 3개, CAN 500kbps
+# - 파워트레인 도메인 (pt_can): 엔진 ECU + 인포테인먼트 HPC, CAN 500kbps
+# - 인포테인먼트/카메라 도메인 (eth_backbone): HPC + 카메라 ECU, Gigabit Ethernet + 스위치
+# - 게이트웨이 (domain_gw): 도메인 간 상태 브로드캐스트
+#     * body_can door_state → eth_backbone (명시 frame 라우트, remap_id 0x520, delay 2ms)
+#     * pt_can 0x200~0x202 → eth_backbone (ID 범위 라우트, delay 1ms)
+#
+# 기능 데모:
+# - CAN ID 중재 (body_can: 0x100 < 0x101 < 0x102 < 0x103)
+# - Ethernet 스위치 FIFO + queue_depth (버스트 시 테일 드롭, scenario 참고)
+# - 게이트웨이 라우팅 (remap_id / ID 범위 / delay_ms)
+# - 오버런: body_ecu.diag 태스크 (period 100 < wcet 110) → 놓친 주기 스킵 + overrun 경고
+# - 스텁 컴포넌트: class 미등록 컴포넌트는 수신자 전용 (자동 송신 없음, D-14)
+
+schema_version: 1
+nodes:
+  # --- 바디 도메인 ---
+  - name: body_ecu
+    type: ECU
+    components:
+      - name: door_ctrl
+        sends: [door_cmd]
+        receives: [door_state]
+        tasks:
+          - { name: door_main, period_ms: 10, priority: 1, wcet_ms: 1 }
+      - name: diag_ctrl
+        tasks:
+          # 오버런 데모: wcet(110) > period(100) → 매 실행 오버런, 다음 주기 인스턴스 스킵
+          - { name: diag, period_ms: 100, priority: 4, wcet_ms: 110 }
+  - name: door_ecu
+    type: ECU
+    components:
+      - name: door_act
+        class: DoorActuator        # 클래스 등록 시 매칭 키 (미등록이면 스텁)
+        receives: [door_cmd]
+  - name: seat_ecu
+    type: ECU
+    components:
+      - name: seat_ctrl
+        sends: [seat_cmd]
+        receives: [seat_state]
+        tasks:
+          - { name: seat_main, period_ms: 20, priority: 2, wcet_ms: 1 }
+
+  # --- 파워트레인 도메인 ---
+  - name: engine_ecu
+    type: ECU
+    components:
+      - name: gear_ctrl
+        receives: [gear_cmd]
+
+  # --- 인포테인먼트/카메라 도메인 ---
+  - name: infotainment_hpc
+    type: HPC
+    components:
+      - name: nav_ctrl
+        sends: [nav_update]
+        receives: [door_state, gear_state]   # 게이트웨이로 라우팅된 상태 수신
+        tasks:
+          - { name: nav_main, period_ms: 50, priority: 3, wcet_ms: 1 }
+  - name: camera_ecu
+    type: ECU
+    components:
+      - name: cam_sensor
+        sends: [cam_stream]
+        receives: [cam_trigger]
+        tasks:
+          - { name: cam_capture, period_ms: 10, priority: 1, wcet_ms: 2 }
+
+links:
+  # --- 바디 CAN ---
+  - name: body_can
+    kind: can
+    bitrate: 500
+    nodes: [body_ecu, door_ecu, seat_ecu]
+    frames:
+      - { name: door_cmd,   id: 0x100, dlc: 4, period_ms: 10,  source: body_ecu }
+      - { name: door_state, id: 0x101, dlc: 4, period_ms: 10,  source: door_ecu }
+      - { name: seat_cmd,   id: 0x102, dlc: 4, period_ms: 20,  source: seat_ecu }
+      - { name: seat_state, id: 0x103, dlc: 4, period_ms: 20,  source: seat_ecu }
+
+  # --- 파워트레인 CAN ---
+  - name: pt_can
+    kind: can
+    bitrate: 500
+    nodes: [engine_ecu, infotainment_hpc]
+    frames:
+      - { name: gear_cmd,   id: 0x200, dlc: 4, period_ms: 20,  source: infotainment_hpc }
+      - { name: gear_state, id: 0x201, dlc: 4, period_ms: 20,  source: engine_ecu }
+      - { name: rpm_state,  id: 0x202, dlc: 4, period_ms: 10,  source: engine_ecu }
+
+  # --- Ethernet 백본 (Gigabit + 스위치) ---
+  # door_state/gear_state는 게이트웨이가 라우팅해 오는 프레임 — HPC 로컬 사본으로
+  # 주기가 매우 길어(100000ms) 시뮬레이션 동안 t=0에서 1회만 주기 전송됨
+  - name: eth_backbone
+    kind: ethernet
+    bitrate: 1000          # Mbps → tx_ms = ceil((DLC+42)*8 / 1,000,000) = 1ms
+    nodes: [infotainment_hpc, camera_ecu]
+    frames:
+      - { name: nav_update,  id: 0x500, dlc: 8,  period_ms: 50,     source: infotainment_hpc }
+      - { name: cam_stream,  id: 0x510, dlc: 64, period_ms: 10,     source: camera_ecu }
+      - { name: cam_trigger, id: 0x511, dlc: 4,  period_ms: 100,    source: infotainment_hpc }
+      - { name: door_state,  id: 0x520, dlc: 4,  period_ms: 100000, source: infotainment_hpc }
+      - { name: gear_state,  id: 0x521, dlc: 4,  period_ms: 100000, source: infotainment_hpc }
+    switches:
+      # 검증용으로 큐 깊이를 의도적으로 작게 설정 — 시나리오 버스트(t=500~502) 시
+      # FIFO 포화 → 테일 드롭(drop 이벤트·리포트 drop_count) 관찰 가능
+      - { name: eth_sw, queue_depth: 4 }
+
+gateways:
+  - name: domain_gw
+    routes:
+      # 명시 frame 라우트: door_state → eth (ID 0x520으로 재매핑, 처리 지연 2ms)
+      - from: { link: body_can, frame: door_state }
+        to: { link: eth_backbone, remap_id: 0x520 }
+        delay_ms: 2
+      # ID 범위 라우트: 파워트레인 0x200~0x202 전체 → eth (ID 유지, 지연 1ms)
+      - from: { link: pt_can, id_min: 0x200, id_max: 0x202 }
+        to: { link: eth_backbone }
+        delay_ms: 1

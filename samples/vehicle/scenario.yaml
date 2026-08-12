@@ -1,0 +1,78 @@
+# 실제 차량 네트워크 샘플 시나리오 — 1000ms 주행
+#
+# - t=5: 운전자 문 제어 명령 주입 (door_cmd, data 포함)
+# - t=500~502: Ethernet 버스트 주입 → 스위치 FIFO 포화
+#     * 동일 프레임은 최신 교체(supersede, D-18)
+#     * queue_depth(4) 초과분은 테일 드롭 → drop 이벤트 + 리포트 drop_count
+# - assertion: CAN tx/rx·Ethernet tx/rx·task, at_ms/within_ms/count(≥)/message 필터
+#
+# 실행: uv run sdv-sim run samples/vehicle/architecture.yaml samples/vehicle/scenario.yaml
+# 결과: pass (exit 0) — drop/overrun/supersede는 로그·리포트에서 관찰 (실패 아님)
+
+schema_version: 1
+duration_ms: 1000
+
+messages:
+  # 운전자 명령: 문 닫기 (data는 tx 이벤트에 그대로 기록)
+  - { t_ms: 5, link: body_can, frame: door_cmd, data: { state: close } }
+
+  # Ethernet 버스트: t=500~502에 5개 프레임씩 3회 연속 주입 → FIFO 포화
+  - { t_ms: 500, link: eth_backbone, frame: nav_update,  data: { route: 12 } }
+  - { t_ms: 500, link: eth_backbone, frame: cam_stream,  data: { frame: 1 } }
+  - { t_ms: 500, link: eth_backbone, frame: cam_trigger, data: { mode: hd } }
+  - { t_ms: 500, link: eth_backbone, frame: door_state,  data: { state: closed } }
+  - { t_ms: 500, link: eth_backbone, frame: gear_state,  data: { gear: D } }
+  - { t_ms: 501, link: eth_backbone, frame: nav_update,  data: { route: 13 } }
+  - { t_ms: 501, link: eth_backbone, frame: cam_stream,  data: { frame: 2 } }
+  - { t_ms: 501, link: eth_backbone, frame: cam_trigger, data: { mode: hd } }
+  - { t_ms: 501, link: eth_backbone, frame: door_state,  data: { state: closed } }
+  - { t_ms: 501, link: eth_backbone, frame: gear_state,  data: { gear: D } }
+  - { t_ms: 502, link: eth_backbone, frame: nav_update,  data: { route: 14 } }
+  - { t_ms: 502, link: eth_backbone, frame: cam_stream,  data: { frame: 3 } }
+  - { t_ms: 502, link: eth_backbone, frame: cam_trigger, data: { mode: hd } }
+  - { t_ms: 502, link: eth_backbone, frame: door_state,  data: { state: closed } }
+  - { t_ms: 502, link: eth_backbone, frame: gear_state,  data: { gear: D } }
+
+assertions:
+  # [CAN] door_cmd tx: 주기 101건(t=0..1000) + 주입 1건(t=5) = 102건, 첫 전송 t=0
+  - name: door_cmd_tx
+    expect: { event: tx, frame: door_cmd, link: body_can, at_ms: 0, count: 102 }
+
+  # [CAN] door_cmd rx: tx 완료(+1ms) 후 door_ecu 수신 — 102건 중 t=1001 제외 → 101건
+  - name: door_cmd_rx
+    expect: { event: rx, frame: door_cmd, link: body_can, node: door_ecu, at_ms: 1, count: 101 }
+
+  # [CAN 중재] door_state tx: 매 tick door_cmd에 밀려 1ms 지연 → 100건(t=1..991)
+  - name: door_state_arbitrated
+    expect: { event: tx, frame: door_state, link: body_can, at_ms: 1, count: 100 }
+
+  # [CAN 중재] seat_cmd tx: body_can에서 3번째 우선순위 → t=0 시도는 t=2에 전송
+  # (door_cmd 0-1, door_state 1-2 후 seat_cmd 2-3) → 50건(t=2,22,...,982)
+  - name: seat_cmd_arbitrated
+    expect: { event: tx, frame: seat_cmd, link: body_can, at_ms: 2, count: 50 }
+
+  # [게이트웨이→rx] eth door_state rx: t=0 FIFO에서 HPC 로컬 사본이 3번째 전송
+  # (nav_update 0-1, cam_stream 1-2, door_state 3-4) → 첫 수신 t=4. 이후
+  # body_can tx 완료+delay 2ms로 라우트된 사본 수신 → 총 ≥ 95건
+  - name: eth_door_state_rx
+    expect: { event: rx, frame: door_state, link: eth_backbone, node: infotainment_hpc, at_ms: 4, count: 95 }
+
+  # [Ethernet] nav_update tx: FIFO 첫 순서 → t=0에 즉시 전송. 주기 50 → t=0..950
+  # 20건 + 주입 3건 = 23건 시도 (t=1000 시도는 종료 전 미전송) → 최소 21건 보장
+  - name: eth_nav_tx
+    expect: { event: tx, frame: nav_update, link: eth_backbone, at_ms: 0, count: 21 }
+
+  # [within_ms] cam_trigger: FIFO 지연으로 첫 전송 t=2 (nav_update/cam_stream 뒤)
+  # 주기 100 → t=2,102,...,1002. 버스트에서 드롭 가능 → 최소 10건
+  - name: eth_cam_trigger_periodic
+    expect: { event: tx, frame: cam_trigger, link: eth_backbone, at_ms: 2, within_ms: 1, count: 10 }
+
+  # [message 필터] message: gear_state — pt_can에서 infotainment_hpc 수신
+  # gear_state(0x201)는 gear_cmd(0x200)에 밀려 tx 1ms 지연 → rx t=2부터 50건
+  - name: pt_gear_rx
+    expect: { event: rx, message: gear_state, link: pt_can, node: infotainment_hpc, at_ms: 2, count: 50 }
+
+  # [task + 오버런 스킵] diag: period 100 wcet 110 → t=0,200,...,1000에만 실행(6회)
+  # (매 실행 오버런 → 다음 인스턴스 스킵, overrun 이벤트·경고는 로그/리포트에서 관찰)
+  - name: diag_task_runs
+    expect: { event: task, node: body_ecu, task: diag, at_ms: 0, count: 6 }

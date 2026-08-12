@@ -1,0 +1,32 @@
+# 기본 샘플 아키텍처 — 문 제어 시스템 (2 ECU + CAN 1링크)
+#
+# 스펙 공식 예시를 확장한 최소 구성:
+# - body_ecu(제어 ECU)가 door_cmd를 주기 전송, door_state를 수신
+# - door_ecu(실행 ECU)는 door_cmd를 수신하는 스텁 컴포넌트
+# - CAN 버스에서 ID가 낮은 door_cmd(0x100)가 중재에서 우선 → door_state(0x101)는
+#   같은 tick에서 버스가 점유되어 1ms 뒤 전송되는 것을 관찰할 수 있음
+
+schema_version: 1
+nodes:
+  - name: body_ecu
+    type: ECU
+    components:
+      - name: door_ctrl
+        sends: [door_cmd]
+        receives: [door_state]
+        tasks:
+          - { name: main, period_ms: 10, priority: 1, wcet_ms: 1 }
+  - name: door_ecu
+    type: ECU
+    components:
+      - name: door_act
+        receives: [door_cmd]
+
+links:
+  - name: can1
+    kind: can
+    bitrate: 500            # kbps → tx_ms = ceil((44 + 8*DLC) / 500) = 1ms
+    nodes: [body_ecu, door_ecu]
+    frames:
+      - { name: door_cmd,   id: 0x100, dlc: 4, period_ms: 10, source: body_ecu }
+      - { name: door_state, id: 0x101, dlc: 4, period_ms: 10, source: door_ecu }
