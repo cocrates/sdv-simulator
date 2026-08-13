@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 
 from sdv_sim.cli.main import _log_document
 from sdv_sim.core.engine import loads
+from sdv_sim.server import app as app_module
 from sdv_sim.server import create_app
 from sdv_sim.server.session import SessionStore
 
@@ -145,8 +146,12 @@ def test_events_report_without_session_409(client: TestClient) -> None:
         assert r.json()["error"]["code"] == "session_invalid"
 
 
-def test_validate_invalidates_session(client: TestClient) -> None:
-    """M-4: the first edit invalidates the session — validate is the edit signal."""
+def test_validate_does_not_invalidate_session(client: TestClient) -> None:
+    """T-024: validate is pure validation — it must not kill the session.
+
+    Edit-time invalidation is frontend-local (SessionMeta.invalidated), so a
+    run → edit-view visit (debounced validate fires) → report flow must keep
+    the session alive on the server."""
     client.post(
         "/api/run", json={"architecture": ARCH_YAML, "scenario": SCENARIO_YAML}
     )
@@ -155,7 +160,7 @@ def test_validate_invalidates_session(client: TestClient) -> None:
     )
     assert r.status_code == 200
     for path in ("/api/events", "/api/report"):
-        assert client.get(path).status_code == 409
+        assert client.get(path).status_code == 200
 
 
 def test_unknown_api_404_envelope(client: TestClient) -> None:
@@ -311,5 +316,55 @@ def test_english_error_localization() -> None:
     r = client.get("/api/events")
     assert r.status_code == 409
     assert r.json()["error"]["message"] == (
-        "session missing or invalidated — run or load a log again"
+        "session missing — run a simulation or load a log"
     )
+
+
+# ------------------------------------------------------------------ static + lang injection (T-020, ASR-020)
+
+HAS_STATIC = app_module._STATIC_DIR.is_dir()
+STATIC_ONLY = pytest.mark.skipif(not HAS_STATIC, reason="frontend build not present")
+
+
+@STATIC_ONLY
+def test_root_serves_injected_lang_ko() -> None:
+    client = TestClient(create_app(lang="ko", store=SessionStore()))
+    r = client.get("/")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    body = r.text
+    assert 'window.__SDV_SIM_LANG__ = "ko";' in body
+    assert '<html lang="ko">' in body
+    # the script sits in <head>; inline classic scripts run before any deferred
+    # module bundle, so i18n resolves before React mounts regardless of order
+    assert body.index("window.__SDV_SIM_LANG__") < body.index("</head>")
+
+
+@STATIC_ONLY
+def test_root_serves_injected_lang_en() -> None:
+    client = TestClient(create_app(lang="en", store=SessionStore()))
+    body = client.get("/").text
+    assert 'window.__SDV_SIM_LANG__ = "en";' in body
+    assert '<html lang="en">' in body
+
+
+@STATIC_ONLY
+def test_root_serves_assets(client: TestClient) -> None:
+    import re
+
+    r = client.get("/")
+    assert r.status_code == 200
+    # every asset reference in the built index.html must resolve
+    for url in re.findall(r'(?:src|href)="(/assets/[^"]+)"', r.text):
+        assert client.get(url).status_code == 200, url
+
+
+def test_root_without_static_returns_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        monkeypatch.setattr(app_module, "_STATIC_DIR", Path(tmp))
+        client = TestClient(create_app(lang="ko", store=SessionStore()))
+        r = client.get("/")
+        assert r.status_code == 200
+        assert r.json() == {"message": app_module.tr("ko", "static_not_built")}

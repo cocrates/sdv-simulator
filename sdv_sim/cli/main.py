@@ -3,7 +3,7 @@
 Usage::
 
     sdv-sim run <architecture.yaml> <scenario.yaml> [--log <path>] [--quiet] [--lang ko|en]
-    sdv-sim serve [--port <port>] [--lang ko|en] [--dev]
+    sdv-sim serve [--port <port>] [--host <ip>] [--lang ko|en] [--dev]
 
 Channels (D-16):
 
@@ -178,8 +178,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "serve",
         help="run the v2 web dashboard (single process: API + static assets)",
     )
-    serve.add_argument("--port", type=int, default=8000, metavar="<port>",
-                       help="listen port (default 8000)")
+    serve.add_argument("--port", type=int, default=8888, metavar="<port>",
+                       help="listen port (default 8888)")
+    serve.add_argument("--host", default="127.0.0.1", metavar="<ip>",
+                       help="bind address (default 127.0.0.1; use 0.0.0.0 to allow external access)")
     serve.add_argument("--lang", choices=("ko", "en"), default=None,
                        help="server language (default: SDV_SIM_LANG env, then system locale)")
     serve.add_argument("--dev", action="store_true",
@@ -223,7 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "serve":
         from sdv_sim.cli.serve import run_serve
 
-        return run_serve(port=args.port, lang=args.lang, dev=args.dev)
+        return run_serve(port=args.port, lang=args.lang, dev=args.dev, host=args.host)
     parser.error(f"unknown command {args.command!r}")  # pragma: no cover
     return EXIT_INTERNAL_ERROR  # pragma: no cover
 

@@ -27,6 +27,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["sdv_sim"]
+# v2 dashboard UI: the packaged static assets must ship in the wheel
+# (ASR-019 — "패키지 내부 정적 자산, wheel 포함"). The frontend build
+# (`npm run build` → sdv_sim/server/static/) is part of the release
+# procedure. static/ is excluded from the package's default file include
+# and instead force-included explicitly — a missing frontend build becomes
+# a build-time error instead of silently shipping a wheel without the UI.
+exclude = ["sdv_sim/server/static"]
+force-include = { "sdv_sim/server/static" = "sdv_sim/server/static" }
 
 [tool.mypy]
 python_version = "3.11"

@@ -279,7 +279,7 @@ Living registry for sdv-simulator. Status of each ASR must stay current.
 - **Resolution path:** adr (추천 — 결합·전달 방식 트레이드오프)
 - **Resolution:** 코어 임베드 실행 + 일괄 JSON 전달. **F-11 (2026-08-12) 후 run 경로 = v1 공개 `loads(arch_yaml, scenario_yaml)` 사용 (파일 경로 불필요, core-yaml-string-input Option A)** — 서버는 브라우저가 보낸 YAML 문자열을 그대로 v1 API로 전달. 파일은 브라우저가 직접 관리(FS Access API 또는 업로드/다운로드 — dashboard-browser-file-access Option C), 서버 파일 API·샌드박스 없음. 로그 로드도 브라우저가 JSON 내용을 `POST /api/load-log`로 전송. 타임스탬프 정렬 전체 이벤트를 `GET /api/events`로 반환, 프런트엔드 로컬 재생/시크. 세션·리포트 파생 규칙은 session-lifecycle/load-log-report ADR에 따라 spec 인코딩. SSE/WebSocket 비목표. 사용자 승인 (2026-08-12).
 - **Spec:** spec/sdv-sim-v2.md
-- **Notes:** v2 (2026-08-12) — PRD v2 "시뮬레이션(구조 뷰 오버레이)"에서 파생. spec review C-1·M-1·M-4 해소로 ADR 3건 추가 승인 (2026-08-12) — reviewing → designed. **2026-08-12 F-11 방향 전환으로 reviewing 복귀 (run-path superseded) → 신규 ADR 2건 승인("오케이")으로 designed 재전환.** **2026-08-12 v2 Spec 승인 (T-007 done) → approved 전환.**
+- **Notes:** v2 (2026-08-12) — PRD v2 "시뮬레이션(구조 뷰 오버레이)"에서 파생. spec review C-1·M-1·M-4 해소로 ADR 3건 추가 승인 (2026-08-12) — reviewing → designed. **2026-08-12 F-11 방향 전환으로 reviewing 복귀 (run-path superseded) → 신규 ADR 2건 승인("오케이")으로 designed 재전환.** **2026-08-12 v2 Spec 승인 (T-007 done) → approved 전환.** **2026-08-13 T-009 검증 U-1 인코딩 (사용자 승인) — 세션 무효화 신호 = `POST /api/validate` 호출 명시 (M-4 절·API 절·Requirements 절에 반영), E15 partial(무효화 500ms 지연) 수용.** **2026-08-13 T-024 재설계 (사용자 승인, 버그 수정) — U-1 폐기: validate는 순수 검증으로 전환하고, 세션 무효화는 프런트 로컬 상태(`SessionMeta.invalidated` — 편집 시작 시 세팅)로 이동. 이유: 편집 없이도 validate가 불리는 경로(마운트/재마운트 디바운스)에서 run 후 세션이 죽는 버그(리포트 409) 발생. 스펙 M-4 절·API 절·Requirements 절 재반영 완료.**
 
 ### ASR-016 — 구조 뷰 렌더링·성능
 
@@ -329,17 +329,18 @@ Living registry for sdv-simulator. Status of each ASR must stay current.
 ### ASR-019 — 패키지 통합·서버 명령 (serve)
 
 - **Category:** Deliverable form
-- **Status:** approved
+- **Status:** designed
 - **Statement:** 대시보드를 `sdv-sim` 패키지에 통합하는 방식 — `serve` 명령 형태, 프런트엔드 정적 자산 패키징(wheel 포함 여부), 서버 수명주기·포트 정책
 - **Why it matters:** 설치·실행 UX 결정. v1 단일 패키지 구조(ASR-006)의 확장 방식
 - **Depends on:** ASR-006, ASR-014
 - **Related ADRs:**
   - `adr/serve-packaging.md` — approved — 단일 프로세스 + 패키지 내부 정적 자산 (2026-08-12)
   - `adr/dashboard-browser-file-access.md` — approved — `--root` 샌드박스 제거 영향 (F-11, 2026-08-12)
+  - `adr/serve-network-binding.md` — approved — 외부 접근·바인딩 정책 (2026-08-13, 사용자 승인 — `--host` 옵션 추가, 기본 127.0.0.1)
 - **Resolution path:** adr (추천) 또는 direct-input
-- **Resolution:** `sdv-sim serve` = 단일 프로세스 — FastAPI 앱 + 패키지 내부 정적 자산(`sdv_sim/server/static/`, wheel 포함). 개발 중 `--dev` 모드로 Vite dev server(HMR) 프록시. **F-11 (2026-08-12)로 `--root` 옵션 제거** — 파일 접근이 브라우저 측으로 이동(dashboard-browser-file-access), 옵션 세트는 `--port`/`--lang`/`--dev`. 사용자 승인 (2026-08-12).
+- **Resolution:** `sdv-sim serve` = 단일 프로세스 — FastAPI 앱 + 패키지 내부 정적 자산(`sdv_sim/server/static/`, wheel 포함). 개발 중 `--dev` 모드로 Vite dev server(HMR) 프록시. **F-11 (2026-08-12)로 `--root` 옵션 제거** — 파일 접근이 브라우저 측으로 이동(dashboard-browser-file-access). 옵션 세트: `--port`/`--lang`/`--dev`. **2026-08-13 `--host` 옵션 추가 (serve-network-binding 승인)** — 기본 `127.0.0.1`(루프백, 안전 기본), `--host 0.0.0.0`으로 외부 접근 가능. 사용자 승인 (2026-08-12).
 - **Spec:** spec/sdv-sim-v2.md
-- **Notes:** v2 (2026-08-12) — PRD v2 "제공 형태"(예: `sdv-sim serve`)에서 파생. **2026-08-12 F-11로 --root 제거 반영 (dashboard-browser-file-access).** **2026-08-12 v2 Spec 승인 (T-007 done) → approved 전환.**
+- **Notes:** v2 (2026-08-12) — PRD v2 "제공 형태"(예: `sdv-sim serve`)에서 파생. **2026-08-12 F-11로 --root 제거 반영 (dashboard-browser-file-access).** **2026-08-12 v2 Spec 승인 (T-007 done) → approved 전환.** **2026-08-13 serve-network-binding 승인("1") → designed 재전환 (외부 접근 허용 결정 — 스펙 반영 필요).**
 
 ### ASR-020 — UI 언어 지원 (ko/en)
 

@@ -1,0 +1,32 @@
+{
+  "name": "sdv-sim-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "SDV Simulator v2 web dashboard frontend (React + TypeScript + Vite)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "check:layout": "node scripts/check-layout.ts",
+    "check:files": "node scripts/check-files.ts",
+    "check:replay": "node scripts/check-replay.ts"
+  },
+  "dependencies": {
+    "js-yaml": "^5.2.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.5.0",
+    "typescript": "^5.8.0",
+    "vite": "^6.3.0"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  }
+}

@@ -204,7 +204,43 @@ class TestCliServe:
             main(["serve", "--help"])
         assert exc.value.code == 0
         out = capsys.readouterr().out
-        assert "--port" in out and "--lang" in out and "--dev" in out
+        assert "--port" in out and "--lang" in out and "--dev" in out and "--host" in out
+
+    def test_serve_host_option_flows_to_run_serve(self, monkeypatch) -> None:
+        """`--host` is parsed and forwarded to run_serve (serve-network-binding)."""
+        captured: dict[str, object] = {}
+
+        def fake_run_serve(port, lang, dev, host):
+            captured.update(port=port, lang=lang, dev=dev, host=host)
+            return 0
+
+        import importlib
+
+        serve_mod = importlib.import_module("sdv_sim.cli.serve")
+        monkeypatch.setattr(serve_mod, "run_serve", fake_run_serve)
+
+        cli_main = importlib.import_module("sdv_sim.cli.main")
+
+        assert cli_main.main(["serve", "--port", "9999", "--host", "0.0.0.0"]) == 0
+        assert captured == {"port": 9999, "lang": None, "dev": False, "host": "0.0.0.0"}
+
+        captured.clear()
+        assert cli_main.main(["serve"]) == 0
+        assert captured["host"] == "127.0.0.1"  # default stays loopback
+
+    def test_serve_external_warning_printed(self, capsys) -> None:
+        """--host 0.0.0.0 prints the external-exposure warning (serve-network-binding)."""
+        import sdv_sim.cli.serve as serve_mod
+
+        serve_mod._print_startup("0.0.0.0", 8888, False, "ko")
+        out = capsys.readouterr().out
+        assert "경고: 외부 접근" in out
+        assert out.split("\n")[0] == "대시보드 실행 중: http://0.0.0.0:8888"
+        # loopback does not warn
+        serve_mod._print_startup("127.0.0.1", 8888, False, "ko")
+        out2 = capsys.readouterr().out
+        assert "경고" not in out2
+        assert "http://127.0.0.1:8888" in out2
 
     def test_serve_port_in_use_returns_input_error(self, capsys) -> None:
         """Port occupied -> clear error + exit code 2 (D-16/U-3 convention)."""

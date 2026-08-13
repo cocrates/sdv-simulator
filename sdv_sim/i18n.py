@@ -56,13 +56,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "log_bad_assertion": "잘못된 assertion assertions[{index}]",
         "log_assertions_invalid": "로그 assertions 필드 오류: {detail}",
         "log_invalid": "로그 검증 실패",
-        "session_invalid": "세션이 없거나 무효화됨 — 실행 또는 로그 로드를 다시 시도하세요",
+        "session_invalid": "세션이 없음 — 편집기에서 실행하거나 로그를 불러오세요",
         "not_found": "요청한 리소스를 찾을 수 없음",
         "static_not_built": "대시보드 정적 자산이 아직 빌드되지 않음 (npm run build 실행 필요)",
         # Serve (CLI) messages
-        "serve_started": "대시보드 실행 중: http://127.0.0.1:{port}",
-        "serve_dev_hint": "개발 모드 — 대시보드 UI는 Vite dev server가 제공합니다 (frontend/ 에서 npm run dev; /api 프록시 대상: http://127.0.0.1:{port})",
+        "serve_started": "대시보드 실행 중: http://{host}:{port}",
+        "serve_dev_hint": "개발 모드 — 대시보드 UI는 Vite dev server가 제공합니다 (frontend/ 에서 npm run dev; /api 프록시 대상: http://{host}:{port})",
         "serve_port_busy": "포트를 사용할 수 없음 (이미 사용 중)",
+        "serve_external_warning": "경고: 외부 접근이 허용된 상태입니다 (--host 0.0.0.0). 인증이 없으므로 방화벽(출발지 IP 제한 등)으로 보호하세요.",
     },
     "en": {
         # CLI summary labels
@@ -105,13 +106,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         "log_bad_assertion": "invalid assertion assertions[{index}]",
         "log_assertions_invalid": "invalid log assertions field: {detail}",
         "log_invalid": "log validation failed",
-        "session_invalid": "session missing or invalidated — run or load a log again",
+        "session_invalid": "session missing — run a simulation or load a log",
         "not_found": "requested resource not found",
         "static_not_built": "dashboard static assets not built yet (run npm run build)",
         # Serve (CLI) messages
-        "serve_started": "Dashboard running at http://127.0.0.1:{port}",
-        "serve_dev_hint": "dev mode — dashboard UI is served by the Vite dev server (npm run dev in frontend/; /api proxied to http://127.0.0.1:{port})",
+        "serve_started": "Dashboard running at http://{host}:{port}",
+        "serve_dev_hint": "dev mode — dashboard UI is served by the Vite dev server (npm run dev in frontend/; /api proxied to http://{host}:{port})",
         "serve_port_busy": "port unavailable (already in use)",
+        "serve_external_warning": "Warning: external access enabled (--host 0.0.0.0). No authentication — protect with a firewall (e.g. source-IP restriction).",
     },
 }
 

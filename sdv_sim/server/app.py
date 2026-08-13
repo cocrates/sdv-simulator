@@ -3,10 +3,9 @@
 Endpoints (API 5종):
 
 - ``POST /api/validate`` — schema validation of architecture/scenario YAML.
-  Every call invalidates the current session: the editor calls this on the
-  first change (debounced), which is the M-4 "편집 시작(첫 변경) 시 세션 무효화"
-  trigger — the API surface has no dedicated invalidation endpoint, and
-  validate fires exactly when an edit reaches the server.
+  Pure validation: it does **not** invalidate the session. Edit-time session
+  invalidation is a frontend-local state (``SessionMeta.invalidated``, M-4 —
+  T-024; the API surface no longer needs a dedicated invalidation signal).
 - ``POST /api/run`` — v1 ``loads(arch, scenario)`` + ``Simulator.run()``,
   replaces the session (source="run"), returns a lightweight result plus the
   full Report (events are fetched via ``GET /api/events``).
@@ -19,7 +18,7 @@ Errors follow F-8: every error is ``{error: {code, message, detail?}}`` with
 machine-readable ``code`` (``validation_error``/``log_invalid``/``session_invalid``/
 ``not_found``/``internal``), localized ``message``, and optional validation
 ``detail`` items ``{path, line, message}``. 409 ``session_invalid`` answers
-events/report when the session is absent or invalidated (F-7).
+events/report when the session is absent (F-7).
 
 The server never touches the filesystem for user files (F-11): all YAML/JSON
 content arrives as strings and the browser manages local files itself.
@@ -27,13 +26,14 @@ content arrives as strings and the browser manages local files itself.
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -120,6 +120,22 @@ def _parse_arch_yaml(content: str, lang: str) -> Architecture:
     return _parse_yaml_text(content, Architecture, "arch")
 
 
+def _inject_lang(html: str, lang: str) -> str:
+    """Inject the server-resolved UI language into the built index.html
+    (ASR-020: serve --lang > SDV_SIM_LANG > locale; the frontend i18n reads
+    ``window.__SDV_SIM_LANG__`` before falling back to the browser locale)."""
+    html = re.sub(
+        r'(<html\b[^>]*\blang=)["\'][^"\']*["\']',
+        lambda m: f'{m.group(1)}"{lang}"',
+        html,
+        count=1,
+    )
+    script = f'<script>window.__SDV_SIM_LANG__ = "{lang}";</script>'
+    if "</head>" in html:
+        return html.replace("</head>", script + "</head>", 1)
+    return html + script
+
+
 # ----------------------------------------------------------------------------- app
 
 
@@ -140,9 +156,8 @@ def create_app(lang: str = "ko", store: SessionStore | None = None) -> FastAPI:
 
     @app.post("/api/validate", response_model=ValidateResponse)
     def validate(req: ValidateRequest) -> ValidateResponse | JSONResponse:
-        # M-4: the first edit invalidates the session; validate is the server
-        # signal that an edit has reached the editor pipeline.
-        sessions.invalidate()
+        # Pure validation (T-024): no session side effects. Edit-time session
+        # invalidation is frontend-local (SessionMeta.invalidated, M-4).
         try:
             if req.kind == "scenario" and req.arch is not None:
                 # structure + reference validation (F-4: arch pairing)
@@ -232,14 +247,14 @@ def create_app(lang: str = "ko", store: SessionStore | None = None) -> FastAPI:
     @app.get("/api/events")
     def events() -> JSONResponse:
         current = sessions.current
-        if current is None or current.invalidated:
+        if current is None:
             return _error("session_invalid", t("session_invalid"), status=409)
         return JSONResponse(current.events)
 
     @app.get("/api/report")
     def report() -> JSONResponse:
         current = sessions.current
-        if current is None or current.invalidated:
+        if current is None:
             return _error("session_invalid", t("session_invalid"), status=409)
         return JSONResponse(current.report)
 
@@ -283,10 +298,22 @@ def create_app(lang: str = "ko", store: SessionStore | None = None) -> FastAPI:
 
     # ------------------------------------------------------------- static assets
 
+    index_html: str | None = None
     if _STATIC_DIR.is_dir():
-        # SPA: hash routing (F-10) — only real static assets are served; the
-        # root "/" serves index.html via html=True.
-        app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")
+        index_file = _STATIC_DIR / "index.html"
+        if index_file.is_file():
+            index_html = index_file.read_text(encoding="utf-8")
+
+    if index_html is not None:
+        # SPA: hash routing (F-10) — only "/" needs index.html; the language is
+        # injected here so the served page matches `serve --lang` (ASR-020).
+        # Registered before the catch-all mount, so "/" hits this route and
+        # /assets/* still falls through to the static mount.
+        @app.get("/", include_in_schema=False)
+        def root() -> HTMLResponse:
+            return HTMLResponse(_inject_lang(index_html, lang))
+
+        app.mount("/", StaticFiles(directory=_STATIC_DIR), name="static")
     else:
         @app.get("/")
         def _root_no_static() -> JSONResponse:

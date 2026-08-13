@@ -26,7 +26,7 @@ from uvicorn.config import LOGGING_CONFIG
 from sdv_sim.i18n import tr
 from sdv_sim.server.app import create_app
 
-HOST = "127.0.0.1"
+DEFAULT_HOST = "127.0.0.1"
 
 EXIT_OK = 0
 EXIT_PORT_BUSY = 2  # v1 resource-error convention: log write failure -> 2 (D-16/U-3)
@@ -45,22 +45,22 @@ def _stdout_log_config() -> dict[str, Any]:
     return cfg
 
 
-def run_serve(port: int, lang: str | None, dev: bool) -> int:
+def run_serve(port: int, lang: str | None, dev: bool, host: str = DEFAULT_HOST) -> int:
     """Run the dashboard server until Ctrl+C. Returns the process exit code."""
     from sdv_sim.cli.main import _resolve_lang  # lazy: cli.main imports this module
 
     app_lang = _resolve_lang(lang)
     app = create_app(lang=app_lang)
 
-    sock = _bind(port)
+    sock = _bind(host, port)
     if sock is None:
         print(f"{tr(app_lang, 'serve_port_busy')}: {port}", file=sys.stderr)
         return EXIT_PORT_BUSY
 
-    _print_startup(port, dev, app_lang)
+    _print_startup(host, port, dev, app_lang)
     config = uvicorn.Config(
         app,
-        host=HOST,
+        host=host,
         port=port,
         fd=sock.fileno(),
         log_level="info",
@@ -74,19 +74,21 @@ def run_serve(port: int, lang: str | None, dev: bool) -> int:
     return EXIT_OK
 
 
-def _bind(port: int) -> socket.socket | None:
+def _bind(host: str, port: int) -> socket.socket | None:
     """Bind the listen socket so port conflicts fail before uvicorn starts."""
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((HOST, port))
+        sock.bind((host, port))
         return sock
     except OSError:
         return None
 
 
-def _print_startup(port: int, dev: bool, lang: str) -> None:
+def _print_startup(host: str, port: int, dev: bool, lang: str) -> None:
     if dev:
-        print(tr(lang, "serve_dev_hint", port=port))
+        print(tr(lang, "serve_dev_hint", port=port, host=host))
     else:
-        print(tr(lang, "serve_started", port=port))
+        print(tr(lang, "serve_started", port=port, host=host))
+    if host == "0.0.0.0":
+        print(tr(lang, "serve_external_warning"))

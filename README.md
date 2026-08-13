@@ -67,6 +67,24 @@ uv run sdv-sim run <architecture.yaml> <scenario.yaml> [--log <path>] [--quiet] 
 | `--quiet` | off | 사람용 요약 생략 (종료 코드로만 판정) |
 | `--lang ko\|en` | 시스템 로케일 | 출력 언어. 우선순위: `--lang` > `SDV_SIM_LANG` env > 시스템 로케일(외 → `ko`) |
 
+### 웹 대시보드 (v2, serve)
+
+```bash
+uv run sdv-sim serve [--port 8888] [--host 127.0.0.1] [--lang ko|en] [--dev]
+```
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `--port <port>` | `8888` | 대시보드 서버 포트. 점유 중이면 exit 2 |
+| `--host <ip>` | `127.0.0.1` | 바인딩 주소. `0.0.0.0` 지정 시 외부 접근 허용(아래 경고 참조) |
+| `--lang ko\|en` | 시스템 로케일 | 대시보드 초기 언어. 우선순위: `--lang` > `SDV_SIM_LANG` env > 시스템 로케일(외 → `ko`). 브라우저 전환(상단 스위치)도 가능하며 선택값은 localStorage에 유지 |
+| `--dev` | off | Vite 개발 서버(포트 5173) 프록시 — HMR로 프런트엔드 개발 시 사용 |
+
+- 단일 프로세스로 동작하며 시작 시 `http://<host>:<port>` URL을 출력합니다. `Ctrl+C`로 종료합니다.
+- 아키텍처/시나리오 편집, 시뮬레이션 실행 → 리플레이(구조 오버레이·이벤트·리포트)까지 브라우저에서 수행합니다.
+- 대시보드 UI(`sdv_sim/server/static/`)는 프런트엔드 빌드 산출물이며 wheel에 포함됩니다(`npm run build` → `../sdv_sim/server/static`).
+- **외부 접근 주의**: `--host 0.0.0.0`은 대시보드를 네트워크에 노출합니다. 인증 기능이 없으므로 방화벽(출발지 IP 제한 등)으로 보호해야 하며, 서버 시작 시 경고 문구가 출력됩니다. (ADR: serve-network-binding)
+
 ### 종료 코드
 
 | 코드 | 의미 |

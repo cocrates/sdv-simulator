@@ -6,8 +6,8 @@
 ## Context
 - 상위 문서: `{project-root}/spec/PRD.md` (v2 스테이지 승인, 2026-08-12)
 - v1 = 라이브러리 코어 + CLI (spec/sdv-sim-v1.md). v2는 동일 패키지에 대시보드 서버를 추가
-- 로컬 실행 전용(단일 사용자·단일 머신, 브라우저 접속), ko/en UI
-- v2 결정 근거: ADR 13건 (기술 스택 / serve / 데이터 흐름 / 렌더링·성능 / 편집·검증 / 실행 경로(문자열 입력) / 리플레이 시간 / 시크 / 세션 수명주기 / load-log 리포트 / 레이아웃 결정성 / 레이아웃 배치 규칙 / 브라우저 파일 접근) + direct-input 1건 (ASR-020) — 참고용, 생성에 필수 아님
+- 로컬 실행 전용(단일 사용자·단일 머신, 브라우저 접속) — 단, **`--host` 옵션으로 외부 접근 가능** (serve-network-binding 승인, 2026-08-13), ko/en UI
+- v2 결정 근거: ADR 14건 (기술 스택 / serve / 데이터 흐름 / 렌더링·성능 / 편집·검증 / 실행 경로(문자열 입력) / 리플레이 시간 / 시크 / 세션 수명주기 / load-log 리포트 / 레이아웃 결정성 / 레이아웃 배치 규칙 / 브라우저 파일 접근 / 서버 네트워크 바인딩) + direct-input 1건 (ASR-020) — 참고용, 생성에 필수 아님
 
 ## Decisions
 
@@ -20,9 +20,9 @@
 ### 제공 형태·서버 (ASR-019)
 - `sdv-sim serve` CLI 명령 추가 — **단일 프로세스**: FastAPI 앱 + 정적 자산을 함께 서빙
 - 프런트엔드 빌드 산출물은 패키지 내부(`sdv_sim/server/static/`)에 포함 — 별도 dist 경로 불필요
-- 옵션: `--port <int>`(기본 8000), `--lang ko|en`, `--dev`(Vite dev server 프록시 — HMR). **`--root` 옵션 없음** (F-11: 파일 접근은 브라우저 측 — dashboard-browser-file-access)
+- 옵션: `--port <int>`(기본 8888), `--host <ip>`(기본 `127.0.0.1` — 루프백, **`0.0.0.0` 지정 시 외부 접근 가능**), `--lang ko|en`, `--dev`(Vite dev server 프록시 — HMR). **`--root` 옵션 없음** (F-11: 파일 접근은 브라우저 측 — dashboard-browser-file-access)
 - 포트 점유 시 명확한 오류 메시지와 함께 **종료 코드 2** (v1 리소스 오류 분류 선례 — 로그 쓰기 실패 → 2, v1 D-16·U-3에 따른 결정)
-- 시작 시 접속 URL(`http://127.0.0.1:{port}`) 출력, Ctrl+C로 종료, 서버 로그는 stdout
+- 시작 시 접속 URL(`http://{host}:{port}`) 출력, Ctrl+C로 종료, 서버 로그는 stdout. **`--host 0.0.0.0` 사용 시** "외부 노출 — 인증 없음, 방화벽(출발지 IP 제한 등)으로 보호 필요" 경고 문구 출력 (serve-network-binding)
 - 실행 전용 데이터는 메모리 유지 — 별도 DB·영속화 없음
 
 ### 데이터 흐름·리플레이 (ASR-015)
@@ -31,7 +31,7 @@
 - **전달**: 이벤트는 타임스탬프 `(t_ms, seq)` 오름차순 **전체 목록**을 일괄 JSON으로 반환 (`GET /api/events`)
 - **리플레이**: 프런트엔드가 전체 이벤트 보유 → **로컬 재생/일시정지/탐색(시크)**. SSE/WebSocket 스트리밍은 비목표
 - **시크 (M-3 — dashboard-seek-state-indexing)**: 위치 결정은 `(t_ms, seq)` 배열 이진 탐색 + **주기적 상태 스냅샷**(이벤트 K개마다 노드 태스크·오버런, 링크 in-flight 프레임, 큐 신호 상태 캡처) + 잔여 ≤ K개 이벤트 재적용. 시크 비용 상한 **O(K)** 보장 — "시크 후 상태 반영 ≤ 100ms" 기준의 달성 전략. K·스냅샷 상세는 생성 시 결정하되 스냅샷 구축은 로드·정렬 2s 예산에 포함. **load-log 경로 (F-5): in-flight 프레임 판정에 tx_ms(DLC/bitrate)가 필요하므로 시크 상태는 고정 펄스 근사로 표시하거나 in-flight를 미표시한다** — 아키텍처가 없는 경로에서는 물리 in-flight 계산 불가
-- **세션 수명주기 (M-4 — dashboard-session-lifecycle)**: 세션 = `{events, report, duration_ms, source: run|log, 아키텍처/시나리오 스냅샷}`. `POST /api/run`·`POST /api/load-log`가 세션을 **교체**. 열린 YAML의 **편집 시작(첫 변경) 시 세션 무효화** → 오버레이 해제 + "정의 변경으로 리플레이 무효" 표시. **편집기에서 파일 열기/새로 만들기(브라우저 파일 선택) 시 세션 리셋**. **load-log 전체 Report (M-1·F-2 해소)**: `POST /api/load-log` 요청에 **대응 아키텍처 YAML(`arch_content`)을 함께 포함하면** 해당 세션은 아키텍처 스냅샷을 보유해 **전체 Report** 계산 — 포함하지 않으면 파생 가능 항목만. (파일 열기 = 세션 교체 규칙과 별개로, load-log 요청 하나에 arch를 포함하는 **단일 액션**으로 모순 해소). 다중 탭: 서버 전역 세션 1개, **last-write-wins**
+- **세션 수명주기 (M-4 — dashboard-session-lifecycle)**: 세션 = `{events, report, duration_ms, source: run|log, 아키텍처/시나리오 스냅샷}`. `POST /api/run`·`POST /api/load-log`가 세션을 **교체**. 열린 YAML의 **편집 시작(첫 변경) 시 세션 무효화** → 오버레이 해제 + "정의 변경으로 리플레이 무효" 표시. **무효화는 프런트 로컬 상태로 처리한다 (T-024)** — 편집 시작 시 프런트가 `SessionMeta.invalidated`를 세우고, 리플레이/리포트 뷰는 서버 조회 전에 이 플래그로 "무효"를 표시한다. `POST /api/validate`는 **순수 검증**이며 세션에 영향을 주지 않는다 (이전 U-1 설계 — "무효화 신호 = validate 호출" — 은 편집 없이도 validate가 불리는 경로(마운트/재마운트 디바운스)에서 run 후 세션이 죽는 버그를 유발해 폐기). **편집기에서 파일 열기/새로 만들기(브라우저 파일 선택) 시 세션 리셋**. **load-log 전체 Report (M-1·F-2 해소)**: `POST /api/load-log` 요청에 **대응 아키텍처 YAML(`arch_content`)을 함께 포함하면** 해당 세션은 아키텍처 스냅샷을 보유해 **전체 Report** 계산 — 포함하지 않으면 파생 가능 항목만. (파일 열기 = 세션 교체 규칙과 별개로, load-log 요청 하나에 arch를 포함하는 **단일 액션**으로 모순 해소). 다중 탭: 서버 전역 세션 1개, **last-write-wins**
 - 이벤트는 v1 로그 스키마의 `events` 배열을 그대로 전달 (축약 포맷 없음 — type: `tx|rx|task_start|task_end|drop|overrun|log`, 필드: `t_ms, seq, node?, link?, frame?, task?, data?`)
 
 ### 구조 뷰 렌더링·성능 (ASR-016)
@@ -74,7 +74,7 @@
 - **검증 시점**: 편집 중 디바운스 500ms 자동 검증 + **저장/실행 시 강제 검증** (실패 시 저장·실행 거부)
 - **검증 범위 (F-4 — run-path downstream 해소)**: `POST /api/validate` 요청은 `arch` 필드를 **선택적으로** 포함할 수 있다. 아키텍처 단독 검증 = 스키마 검증 전체. **시나리오 단독 검증 = 구조 검증만** (unknown link/frame 등 참조 검증은 아키텍처가 없으면 불가) — `arch`가 포함되면 참조 검증까지 수행
 - **오류 표시**: 줄 단위 인라인 마커 + 오류 메시지(파일명·줄 번호·필드 경로 — v1 스키마 오류 형식 정합)
-- **새로 만들기**: 아키텍처/시나리오 기본 템플릿(skeleton)으로 신규 파일 생성 — v1 정의 스키마(spec/sdv-sim-v1.md) 기준 최소 필수 필드를 갖춘 템플릿
+- **새로 만들기**: 아키텍처/시나리오 기본 템플릿으로 신규 파일 생성 — **`samples/basic` 미러 샘플** (아키텍처: 문 제어 샘플, 시나리오: 동일 샘플 — 주입 메시지 1건 + assertion 5건). **기본 실행(새 세션)도 같은 템플릿으로 두 슬롯을 시드** — 파일을 만들지 않아도 [실행]으로 즉시 리플레이 확인 가능 (T-023, 2026-08-13)
 - **저장**: 검증 통과 시 브라우저 로컬 파일로 저장 (Chrome/Edge = 같은 파일, 기타 = 다운로드)
 
 ### 파일 접근·보안 경계 (ASR-017, F-11 재정의)
@@ -90,18 +90,20 @@
 
 ### API (REST, JSON)
 - **오류 응답 스키마 (F-8)**: 모든 오류는 `{error: {code, message, detail?}}` 형태. `code`는 기계 판독용 카테고리(`validation_error`/`log_invalid`/`session_invalid`/`not_found`/`internal`), `message`는 서버 언어(ko/en) 로컬라이즈, `detail`는 선택 — 검증 오류 목록일 경우 `{path, line, message}` 배열 (v1 스키마 오류 형식 정합)
-- `POST /api/validate` — 검증 (`{kind: architecture|scenario, content, arch?: string}` → `{valid, errors: [{path, line, message}]}`). **시나리오 단독 시 arch 없으면 구조 검증만, arch 포함 시 참조 검증까지 (F-4)**. 오류 메시지는 서버 언어(ko/en)로 로컬라이즈
+- `POST /api/validate` — 검증 (`{kind: architecture|scenario, content, arch?: string}` → `{valid, errors: [{path, line, message}]}`). **시나리오 단독 시 arch 없으면 구조 검증만, arch 포함 시 참조 검증까지 (F-4)**. 오류 메시지는 서버 언어(ko/en)로 로컬라이즈. **순수 검증 — 세션에 부작용 없음 (T-024)**
 - `POST /api/run` — 실행 (`{architecture, scenario}` YAML 문자열 → v1 `loads(arch_yaml, scenario_yaml)` → `Simulator.run()` → 결과 + **세션 교체**). 검증 실패 시 422 + 오류 목록. (v1 `load()` 파일 경로 시그니처 미사용 — core-yaml-string-input)
 - `POST /api/load-log` — 브라우저가 읽은 v1 이벤트 로그 JSON 로드 (`{name?, content, arch_content?: string}` → 로그 검증(`schema_version == 1`, type enum, `(t_ms, seq)` 정렬) → **세션 교체**). `arch_content` 포함 시 전체 Report 계산 (M-1, F-2 해소). 검증 실패 시 422 + 오류 목록
-- `GET /api/events` — **현재 세션**의 전체 이벤트 목록 (`(t_ms, seq)` 오름차순). **세션 없음/무효화 시 409 + `{error: {code: session_invalid}}` (F-7)**
-- `GET /api/report` — **현재 세션**의 `Report` + assertions 반환 (load-log 경로는 M-1 파생 규칙 적용). **세션 없음/무효화 시 409 + `{error: {code: session_invalid}}` (F-7)**
+- `GET /api/events` — **현재 세션**의 전체 이벤트 목록 (`(t_ms, seq)` 오름차순). **세션 없음 시 409 + `{error: {code: session_invalid}}` (F-7; 무효화 표시는 프런트 로컬 — T-024)**
+- `GET /api/report` — **현재 세션**의 `Report` + assertions 반환 (load-log 경로는 M-1 파생 규칙 적용). **세션 없음 시 409 + `{error: {code: session_invalid}}` (F-7; 무효화 표시는 프런트 로컬 — T-024)**
 - 서버 오류 응답은 ko/en 중 서버 언어로 로컬라이즈 (내부 예외 상세는 원문 유지 — v1 D-16 정합)
 
 ## Requirements
 
 ### 서버 (serve)
-- `sdv-sim serve` 명령이 존재하고 기본 포트 8000에서 대시보드를 제공한다
+- `sdv-sim serve` 명령이 존재하고 기본 포트 8888에서 대시보드를 제공한다
 - `--port`/`--lang`/`--dev` 옵션이 동작한다 (`--root` 옵션은 없다)
+- `--host <ip>` 옵션이 동작한다 — 기본값 `127.0.0.1`(루프백), `0.0.0.0` 지정 시 외부 접근 가능 (serve-network-binding)
+- `--host 0.0.0.0` 사용 시 "외부 노출 — 인증 없음, 방화벽으로 보호 필요" 경고 문구가 출력된다 (serve-network-binding)
 - serve는 정적 자산을 패키지 내부에서 서빙한다 (외부 dist 경로 불필요)
 - 포트 점유 시 명확한 오류와 종료 코드 2로 종료한다 (v1 리소스 오류 선례 — D-16·U-3)
 - 시작 시 접속 URL을 출력한다
@@ -113,6 +115,7 @@
 - 서버 파일 API(`/api/files*`)와 `--root` 샌드박스는 제공되지 않는다
 - 브라우저에서 파일 삭제·이름 변경 기능은 제공되지 않는다
 - 최근 파일 목록(IndexedDB)을 제공한다
+- **기본 실행(새 세션) 시 아키텍처·시나리오 두 슬롯이 `samples/basic` 미러 템플릿으로 시드되어, 파일 생성 없이 [실행]으로 즉시 리플레이를 확인할 수 있다** (T-023, 2026-08-13)
 
 ### 편집·검증
 - YAML 텍스트 편집이 가능하고, 유효한 편집 내용이 다이어그램에 실시간 반영된다
@@ -135,8 +138,8 @@
 - 이벤트 타입·엔티티 필터가 동작한다 (task = task_start+task_end 그룹)
 - assertion 결과와 리포트를 확인할 수 있다 — run 경로는 전체, load-log 경로는 파생 가능 항목만 (M-1)
 - 브라우저가 선택한 v1 이벤트 로그 JSON을 로드해 리플레이할 수 있다 (`arch_content` 포함 시 전체 Report)
-- 편집 시작(첫 변경) 시 세션이 무효화되어 리플레이 오버레이가 해제되고 안내가 표시된다 (M-4)
-- 무효화된 세션의 events/report 조회는 409 + `session_invalid` 오류를 반환한다 (F-7)
+- 편집 시작(첫 변경) 시 세션이 무효화되어 리플레이 오버레이가 해제되고 안내가 표시된다 (M-4). **무효화는 프런트 로컬 상태로 처리된다 — 편집 시작 시 `SessionMeta.invalidated`를 세우고 리플레이/리포트 뷰가 이를 표시한다. `POST /api/validate`는 순수 검증으로 세션에 영향을 주지 않는다 (T-024)**
+- 세션이 없는 경우 events/report 조회는 409 + `session_invalid` 오류를 반환한다 (F-7; 무효화 표시는 프런트 로컬 — T-024)
 
 ### 성능
 - 노드 ≤ 200 / 링크 ≤ 500 토폴로지에서 인터랙션이 60fps로 동작한다
@@ -149,7 +152,7 @@
 
 ## Constraints
 - v1 코어 변경은 **문자열 입력 API(`loads`/`load_scenario_yaml`) 추가로 제한** — 기존 `load`/`run`/`events` 계약·동작 하위 호환 유지 (core-yaml-string-input)
-- 로컬 실행 전용 (단일 사용자·단일 머신) — 클라우드·다중 사용자·인증 없음
+- 로컬 실행 전용 (단일 사용자·단일 머신) — 클라우드·다중 사용자·인증 없음. **단, `--host 0.0.0.0`으로 외부 접근 가능하며, 이 경우 인증이 없어 방화벽 등 네트워크 보호 조치가 사용자 책임이다** (serve-network-binding, 2026-08-13)
 - 파일 접근은 **브라우저 권한 경계** — 서버는 파일시스템에 접근하지 않는다 (F-11)
 - 대시보드 실행은 컴포넌트 클래스 미등록(스텁 동작, v1 D-14) 기준 — 브라우저에서 Python 코드 등록 불가
 - 시간·이벤트 의미론은 v1 그대로 (정수 ms, `(t_ms, seq)` 정렬, 전파 지연 0, 홉 ≤ 8)
@@ -162,7 +165,7 @@
 - 구조화 폼(폼 기반) 편집 / 시각적(드래그 앤 드롭) 아키텍처 편집
 - 파일 삭제·이름 변경 (브라우저에서)
 - **서버 측 파일시스템 접근·파일 API·`--root` 샌드박스 (F-11 제거)**
-- 클라우드 배포·다중 사용자·계정 인증
+- 클라우드 배포·다중 사용자·계정 인증 (**외부 접근(`--host 0.0.0.0`)은 단일 사용자 접근용으로 허용 — 인증·다중 사용자 기능은 여전히 비목표**, serve-network-binding, 2026-08-13)
 - SSE/WebSocket 이벤트 스트리밍
 - Canvas 렌더링 (SVG 사용)
 - 컴포넌트 Python 클래스 등록 UI (스텁 실행만)
