@@ -9,10 +9,10 @@
 
 | Done | In progress | Pending | Blocked | Skipped |
 |------|-------------|---------|---------|---------|
-| 22   | 1           | 1       | 0       | 0       |
+| 28   | 0           | 0       | 0       | 0       |
 
-**Current focus:** T-024 — 리포트 409: validate가 세션을 무효화하지 않도록 분리 (M-4 재설계)
-**Recommended next:** T-024 완료 후 T-010 — Gate: v2 완료 승인
+**Current focus:** —
+**Recommended next:** — (v2 세션 완료 — v3(데스크톱) 논의 가능)
 
 ## Active
 
@@ -150,26 +150,46 @@
   - Depends: T-018
   - Notes: **2026-08-13 완료 (사용자 요청 — "기본 실행에서 시나리오도 basic 샘플로, 모르는 사람도 그냥 실행")** — `scenarioTemplate()`을 `samples/basic/scenario.yaml` 미러로 교체 (문 제어 100ms: 주입 메시지 1건 + assertion 5건), App.tsx 시나리오 슬롯 기본 시드(null → template, 닫기 가능 유지), 스펙 L77(새로 만들기·기본 시드) + Requirements 불릿 추가, check-files 검증 강화(메시지 ≥1·assertion ≥1). **검증**: check:files all passed(신규 2종 포함), typecheck·build 성공, 새 빌드 서빙 확인(asset index-11yoEP0a.js), **통합 확인 — 기본 시드 시나리오로 run: exit 0 + report result pass + assertions 5/5 pass, validate arch/scen 200 True**, pytest 113 passed, mypy 18 files clean. 서버 재시작으로 외부 접근 유지(58/58 노드 OK). **다음: T-010 게이트.**
 
-- [ ] **T-010** `pending` — Gate: v2 완료 승인
+- [x] **T-010** `done` — Gate: v2 완료 승인
   - Phase: Verification (feedback loop)
   - Artifact: —
   - Depends: T-009
-  - Notes: 검증 결과 + 외부 접근 + 기본 샘플 반영 리뷰 후 사용자 명시 승인. 이후 v3(데스크톱) 논의 가능. **2026-08-13 T-024(리포트 409 버그) 수정 후 재승인 필요.**
+  - Notes: **2026-08-13 사용자 명시 승인("완료 승인해줘")** — v2 완료 확정. 반영 항목: 검증 결과(T-009) + 외부 접근(T-022) + 기본 샘플(T-023) + 리포트 409 수정(T-024) + deploy 산출물(T-025~T-028). v3(데스크톱)는 별도 논의. **SDV Simulator v2 (웹 대시보드) 세션 완료.**
 
-- [ ] **T-024** `in_progress` — [버그수정] 리포트 409: validate가 세션을 무효화하지 않도록 분리 (M-4 재설계)
+- [x] **T-024** `done` — [버그수정] 리포트 409: validate가 세션을 무효화하지 않도록 분리 (M-4 재설계)
   - Phase: Step 5 (Generation) — 크로스컷 (피드백)
   - Artifact: `sdv_sim/server/{app,session}.py`, `frontend/src/{App.tsx,ReportView.tsx,replay/ReplayView.tsx,types/schema.ts,i18n/messages.ts}`, `spec/sdv-sim-v2.md`, `spec/ASR.md`, `tests/test_server.py`
   - Depends: T-009
-  - Notes: **2026-08-13 사용자 버그 리포트** — "실행→재생 후 리포트로 가면 로그 파일이 필요하다고 함". 원인: (1) 서버 `/api/validate`가 호출마다 세션 무효화(M-4 무효화 신호=validate), (2) 프런트 `useValidation`이 편집 없이도(마운트/재마운트 디바운스) validate 호출 → run 후 편집기 방문/재로드 시 세션 사망, (3) 리포트 409 → noSession 문구가 "로그 파일" 오해 유발. **수정 방향 (사용자 승인)**: validate는 순수 검증으로 전환(무효화 제거), 세션 무효화는 **프런트 로컬 상태**(SessionMeta.invalidated — handleEdit에서 편집 시작 시 표시)로 이동, ReplayView/ReportView가 invalidated면 서버 조회 전 "무효" 표시, 스펙 M-4/API/Requirements + ASR-015 U-1 문구 갱신, noSession 문구 개선. **2026-08-13 T-024 버그(리포트 409 세션 무효화)로 승인 보류 — T-024 완료 후 재승인 필요.**
+  - Notes: **2026-08-13 사용자 버그 리포트** — "실행→재생 후 리포트로 가면 로그 파일이 필요하다고 함". 원인: (1) 서버 `/api/validate`가 호출마다 세션 무효화(M-4 무효화 신호=validate), (2) 프런트 `useValidation`이 편집 없이도(마운트/재마운트 디바운스) validate 호출 → run 후 편집기 방문/재로드 시 세션 사망, (3) 리포트 409 → noSession 문구가 "로그 파일" 오해 유발. **수정 방향 (사용자 승인)**: validate는 순수 검증으로 전환(무효화 제거), 세션 무효화는 **프런트 로컬 상태**(SessionMeta.invalidated — handleEdit에서 편집 시작 시 표시)로 이동, ReplayView/ReportView가 invalidated면 서버 조회 전 "무효" 표시, 스펙 M-4/API/Requirements + ASR-015 U-1 문구 갱신, noSession 문구 개선. **2026-08-13 완료 — 검증 (진행 상황 체크 중 재확인)**: 서버 `/api/validate` 순수 검증 전환 확인(app.py — 세션 부작용 없음), session.py docstring 갱신, 프런트 `SessionMeta.invalidated` 4개 파일 반영(App.tsx handleEdit·ReplayView·ReportView·schema.ts), noSession 개선 문구 ko/en 확인("아직 실행된 시뮬레이션이 없습니다..."/"No simulation has been run yet..."), 스펙 M-4 절·API 절·Requirements 절 + ASR-015 U-1 폐기 기록 확인. **테스트**: 신규 `test_validate_does_not_invalidate_session` 포함 pytest 113 passed, mypy strict 18 files clean, typecheck·check:layout·check:files·check:replay 전부 통과, build 성공. **통합 시나리오**: run → validate×3(편집기 디바운스 재현) → report/events 200 유지 (report `simulation.result: pass`, assertions 5/5).
 
-- [ ] **T-024** `in_progress` — [버그수정] 리포트 409: validate가 세션을 무효화하지 않도록 분리 (M-4 재설계)
-  - Phase: Step 5 (Generation) — 크로스컷 (피드백)
-  - Artifact: `sdv_sim/server/{app,session}.py`, `frontend/src/{App.tsx,ReportView.tsx,replay/ReplayView.tsx,types/schema.ts,i18n/messages.ts}`, `spec/sdv-sim-v2.md`, `spec/ASR.md`, `tests/test_server.py`
-  - Depends: T-009
-  - Notes: **2026-08-13 사용자 버그 리포트** — "실행→재생 후 리포트로 가면 로그 파일이 필요하다고 함". 원인: (1) 서버 `/api/validate`가 호출마다 세션 무효화(M-4 무효화 신호=validate), (2) 프런트 `useValidation`이 편집 없이도(마운트/재마운트 디바운스) validate 호출 → run 후 편집기 방문/재로드 시 세션 사망, (3) 리포트 409 → noSession 문구가 "로그 파일" 오해 유발. **수정 방향 (사용자 승인)**: validate는 순수 검증으로 전환(무효화 제거), 세션 무효화는 **프런트 로컬 상태**(SessionMeta.invalidated — handleEdit에서 편집 시작 시 표시)로 이동, ReplayView/ReportView가 invalidated면 서버 조회 전 "무효" 표시, 스펙 M-4/API/Requirements + ASR-015 U-1 문구 갱신, noSession 문구 개선.
+- [x] **T-025** `done` — [설계] deploy 시스템 상시 서비스 설계 승인 (user unit + install/uninstall)
+  - Phase: Step 5 (Generation) — 운영/배포 (피드백)
+  - Artifact: — (설계안)
+  - Depends: T-010 (승인 보류 중이지만 별도 진행 — 사용자 요청)
+  - Notes: **2026-08-13 사용자 승인** — "deploy/ 폴더에 시스템 등록용 deploy 스크립트 작성, ../cocrates-server/deploy/ 참고". 설계안: systemd **user unit**(`Restart=always`/`RestartSec=5`/`WantedBy=default.target`, `%h/work/sdv-simulator/.venv/bin/sdv-sim serve --port 8888 --host 0.0.0.0`, `Environment=SDV_SIM_LANG=ko`) + `install.sh`(복사→daemon-reload→enable--now→linger) + `uninstall.sh`. **"실제 설치는 하지 말아줘" — 파일 작성·검증까지만.** ASR-021 등록 (designed).
+
+- [x] **T-026** `done` — [생성] deploy/ 파일 3종 (sdv-simulator.service, install.sh, uninstall.sh)
+  - Phase: Step 5 (Generation) — 운영/배포
+  - Artifact: `deploy/{sdv-simulator.service,install.sh,uninstall.sh}`
+  - Depends: T-025
+  - Notes: **2026-08-13 완료** — cocrates-server/deploy 패턴 미러. unit(user, Restart=always/5s, WantedBy=default.target, %h/work/sdv-simulator, .venv/bin/sdv-sim serve --port 8888 --host 0.0.0.0, SDV_SIM_LANG=ko, 전제·주의 주석), install.sh(preflight venv/static → 복사 → daemon-reload → enable --now → linger → 상태/URL 보고, set -euo pipefail), uninstall.sh(disable --now → 설치본 삭제 → daemon-reload). **실제 설치·enable은 수행하지 않음.**
+
+- [x] **T-027** `done` — [검증] deploy 산출물 검증 (systemd-analyze verify, bash 구문, 전제 확인)
+  - Phase: Step 5 (Generation) — 운영/배포
+  - Artifact: —
+  - Depends: T-026
+  - Notes: **2026-08-13 완료** — `systemd-analyze verify deploy/sdv-simulator.service` 통과, `bash -n` install/uninstall 통과, chmod +x 적용, 전제 확인 (.venv/bin/sdv-sim 실행 가능 존재, sdv_sim/server/static/index.html 존재). **실제 설치 안 함.**
+
+- [x] **T-028** `done` — Gate: deploy 산출물 리뷰·승인
+  - Phase: Step 5 (Generation) — 운영/배포
+  - Artifact: —
+  - Depends: T-027
+  - Notes: **2026-08-13 사용자 명시 승인("오케이 완료 처리해줘")** — deploy/ 산출물 3종 승인. 실제 설치는 보류 유지 (사용자가 필요 시 `./deploy/install.sh` 직접 실행). ASR-021 approved 전환.
 
 ## Notes
 
+- **deploy 요청 (2026-08-13, T-025~T-028)**: 사용자 지시 — "시스템에 등록해서 계속 실행될 수 있도록 하는 deploy 스크립트를 deploy/ 폴더에 만들어줘. ../cocrates-server/deploy/ 폴더를 참고해서." → **설계 승인 + 파일 작성·검증만 (실제 설치는 보류)**. ASR-021 registered (designed).
+- **TODO Sync (2026-08-13, 진행 상황 체크)**: T-024(리포트 409) 수정 완료 확인 → `done` 처리, 중복 항목 정리. 검증 중 **frontend/ `node_modules` 누락 발견 → `npm install` 후 전체 체크 재실행** (typecheck·check:layout·check:files·check:replay 전부 통과). `npm run build`로 정적 자산 재생성 — **기존 커밋된 static(index-11yoEP0a.js)은 T-024 중간 상태**(noSession 개선 문구 미포함)였음이 확인되어, 신규 빌드(index-C0UL5AHq.js)가 수정분 포함. **미커밋 작업 트리 변경 있음**: static 삭제/추가(index.html M, index-11yoEP0a.js D, index-C0UL5AHq.js ??) — 커밋 필요 (사용자 확인 대기). **8888 실행 서버는 현재 없음** (재시작 필요 시 `sdv-sim serve --port 8888 --host 0.0.0.0 --lang ko`).
 - **T-023 기본 샘플 시드 완료 (2026-08-13)**: 시나리오 슬롯도 basic 샘플로 시작 — 새 세션에서 파일 생성 없이 [실행]만 누르면 리플레이·리포트 확인 가능 (assertions 5건 pass 확인). 시나리오는 탭 닫기로 제거 가능(기존 동작 유지).
 - **T-022 serve 외부 접근 완료 (2026-08-13)**: 사용자 요청("외부 브라우저에서 http://161.33.194.12:8888 접근") → serve-network-binding ADR Option B 승인("1"). `--host 0.0.0.0`로 외부 접근 가능 + OCI OS 방화벽 8888 허용·영속화. **현재 서버 실행 중** (`sdv-sim serve --port 8888 --host 0.0.0.0 --lang ko`, setsid) — 외부에서 `http://161.33.194.12:8888` 접속 가능 (58/58 노드 확인). 주의: 인증 없음 — 방화벽 출발지 IP 제한 권장.
 - **T-020 패키징 완료 (2026-08-13)**: wheel에 대시보드 UI 포함 + 언어 주입 마무리 → **Step 5(v2 대시보드 생성) 전체 완료, T-008 done.** 다음 단계는 **T-009 v2 검증**(spec-driven-verification) — PRD·v2 스펙 대비 항목별 비교 후 사용자 승인(T-010).

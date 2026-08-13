@@ -26,6 +26,7 @@ Living registry for sdv-simulator. Status of each ASR must stay current.
 | ASR-018 | 편집·검증 피드백 | Quality bar | approved | adr/editor-validation-feedback.md (approved) | spec/sdv-sim-v2.md |
 | ASR-019 | 패키지 통합·서버 명령 (serve) | Deliverable form | approved | adr/serve-packaging.md (approved), adr/dashboard-browser-file-access.md (approved) | spec/sdv-sim-v2.md |
 | ASR-020 | UI 언어 지원 (ko/en) | Constraints | approved | — (direct-input) | spec/sdv-sim-v2.md |
+| ASR-021 | 상시 실행 서비스 등록 (deploy) | Integration & dependencies | approved | — (direct-input — cocrates-server/deploy 패턴 참조) | — |
 
 ## Dependency Order (recommended review path)
 
@@ -354,3 +355,16 @@ Living registry for sdv-simulator. Status of each ASR must stay current.
 - **Resolution:** 프런트엔드 i18n 메시지 카탈로그(ko/en, React 대상) — v1 우선순위 패턴(--lang/env/브라우저 로케일) 대응. UI 문자열 하드코딩 금지, 카탈로그 외부화. 언어 선택 UI 포함. 사용자 위임 계속 진행 (2026-08-12).
 - **Spec:** spec/sdv-sim-v2.md
 - **Notes:** v2 (2026-08-12) — PRD v2 제약에서 파생. **2026-08-12 v2 Spec 승인 (T-007 done) → approved 전환.**
+
+### ASR-021 — 상시 실행 서비스 등록 (deploy)
+
+- **Category:** Integration & dependencies
+- **Status:** approved
+- **Statement:** 대시보드를 부팅·장애 후에도 계속 실행되도록 시스템 서비스로 등록하는 배포 방식
+- **Why it matters:** "계속 실행" 요구 — 수동 실행 대비 재부팅·장애 후 자동 복구와 시작 절차 표준화. 로컬 실행 전용(PRD 제약)과 충돌하지 않는 방식이어야 함
+- **Depends on:** ASR-019 (serve 명령·포트·바인딩)
+- **Related ADRs:** — (direct-input — cocrates-server/deploy 패턴 참조)
+- **Resolution path:** direct-input (참조 패턴 존재 — `../cocrates-server/deploy/`)
+- **Resolution:** cocrates-server/deploy 패턴 미러 — **systemd user unit** (`deploy/sdv-simulator.service`: `Restart=always`/`RestartSec=5`/`WantedBy=default.target`, `%h/work/sdv-simulator`, `.venv/bin/sdv-sim serve --port 8888 --host 0.0.0.0`, `Environment=SDV_SIM_LANG=ko`). 설치 = `deploy/install.sh` (unit 복사 → `daemon-reload` → `enable --now` → linger 활성화), 해제 = `deploy/uninstall.sh`. 사용자 승인 (2026-08-13) — **실제 설치는 보류** ("실제 설치는 하지 말아줘").
+- **Spec:** — (산출물 = `deploy/` 파일 자체; 스펙 반영은 추후 판단)
+- **Notes:** v2 후속 운영 요청 (2026-08-13) — 사용자 지시: "시스템에 등록해서 계속 실행될 수 있도록 하는 deploy 스크립트를 deploy/ 폴더에 만들어줘. ../cocrates-server/deploy/ 폴더를 참고해서." **2026-08-13 사용자 승인(T-028 done) → approved 전환.** 실제 설치는 보류 — 사용자가 필요 시 `./deploy/install.sh` 직접 실행.

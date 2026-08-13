@@ -1,0 +1,33 @@
+# SDV Simulator v2 dashboard — systemd user unit
+#
+# Source of truth: this file (mirrors ../cocrates-server/deploy pattern).
+# Install: deploy/install.sh (recommended) or manually:
+#   cp deploy/sdv-simulator.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now sdv-simulator.service
+#
+# Notes:
+# - User unit (not system): runs as the logged-in user, WantedBy=default.target.
+#   For boot-time start enable linger: loginctl enable-linger $USER
+#   (install.sh does this automatically).
+# - Prerequisite: the frontend static build must exist at
+#   sdv_sim/server/static/ (frontend: npm run build) — otherwise serve
+#   answers / with {"message": "static not built"}.
+# - --host 0.0.0.0 exposes the dashboard on the network WITHOUT authentication
+#   (spec/sdv-sim-v2.md constraint). The OCI OS firewall already allows 8888
+#   (T-022); restrict source IPs if desired.
+
+[Unit]
+Description=SDV Simulator v2 dashboard (sdv-sim serve)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/work/sdv-simulator
+Environment=SDV_SIM_LANG=ko
+ExecStart=%h/work/sdv-simulator/.venv/bin/sdv-sim serve --port 8888 --host 0.0.0.0
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
