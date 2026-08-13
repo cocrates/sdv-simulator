@@ -1,3 +1,8 @@
+1. 이 과제는 [**Cocrates Agent Harness**](https://cocrates.ai)를 사용해서 개발되었음. 설치 및 사용법은 [cocrates.ai](https://cocrates.ai) 참조.
+2. [prompts.md](prompts.md)에 실제 과제를 수행한 과정이 있으니 참고 바람.
+
+---
+
 # SDV Simulator (sdv-sim)
 
 SDV(Software Defined Vehicle) 차량 소프트웨어 플랫폼 시뮬레이터.
